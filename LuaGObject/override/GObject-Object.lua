@@ -232,6 +232,14 @@ function Object:_element(object, name)
 		if iface then element, category = iface:_element(object, name, self) end
 		if element then return element, category end
 	end
+
+	-- Element not found in the repo (typelib), try whether dynamic
+	-- property of the specified name exists. Guarded: a stale class record
+	-- must not reach GI, where an invalid GType crashes the process.
+	local ok, property = pcall(function()
+		return Object._class.find_property(object._class, name:gsub('_', '-'))
+	end)
+	if ok and property then return property, '_property' end
 end
 
 -- Sets/gets property using specified marshaller attributes.
