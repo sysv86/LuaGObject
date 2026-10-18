@@ -9,6 +9,29 @@ GObject and GTypeInstance handling. */
 /* lightuserdata key to registry, containing table representing weak cache of known objects. */
 static int cache;
 
+static GHashTable *owned_objects = NULL;
+
+static void
+object_mark_owned(gpointer obj)
+{
+	if (!owned_objects) {
+		owned_objects = g_hash_table_new(g_direct_hash, g_direct_equal);
+	}
+	g_hash_table_add(owned_objects, obj);
+}
+
+static gboolean
+object_unmark_owned(gpointer obj)
+{
+	return owned_objects != NULL && g_hash_table_remove(owned_objects, obj);
+}
+
+static gboolean
+object_is_owned(gpointer obj)
+{
+	return owned_objects != NULL && g_hash_table_contains(owned_objects, obj);
+}
+
 /* lightuserdata key to registry for metatable of objects. */
 static int object_mt;
 
@@ -192,9 +215,8 @@ object_refsink(lua_State *L, gpointer obj, gboolean no_sink)
 	return FALSE;
 }
 
-/* Removes one reference from the object. */
 static void
-object_unref(lua_State *L, gpointer obj)
+object_unref_impl(lua_State *L, gpointer obj)
 {
 	GType gtype = G_TYPE_FROM_INSTANCE(obj);
 	if (G_TYPE_IS_OBJECT(gtype)) {
@@ -228,6 +250,18 @@ object_unref(lua_State *L, gpointer obj)
 #if 0
 	g_warning("no way to unref type `%s'", g_type_name(gtype));
 #endif
+}
+
+static void
+object_unref(lua_State *L, gpointer obj)
+{
+	if (obj == NULL) {
+		return;
+	}
+	if (!object_unmark_owned(obj)) {
+		return;
+	}
+	object_unref_impl(L, obj);
 }
 
 static int
@@ -306,8 +340,13 @@ lua_gobject_object_2lua(lua_State *L, gpointer obj, gboolean own, gboolean no_si
 		lua_replace(L, -2);
 
 		/* If the object was already owned, remove one reference, because our proxy always keeps only one reference, which we already have. */
-		if (own)
-		object_unref(L, obj);
+		if (own) {
+			if (object_is_owned(obj)) {
+				object_unref_impl(L, obj);
+			} else {
+				object_mark_owned(obj);
+			}
+		}
 		return 1;
 	}
 
@@ -330,8 +369,11 @@ lua_gobject_object_2lua(lua_State *L, gpointer obj, gboolean own, gboolean no_si
 	lua_pop(L, 1);
 
 	/* If we don't own the object, take its ownership(and also remove floating reference if there is any). */
-	if (!own)
-		object_refsink(L, obj, no_sink);
+	if (own) {
+		object_mark_owned(obj);
+	} else if (object_refsink(L, obj, no_sink)) {
+		object_mark_owned(obj);
+	}
 
 	return 1;
 }

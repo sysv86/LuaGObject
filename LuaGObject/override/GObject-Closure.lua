@@ -21,6 +21,9 @@ local Type, Value = repo.GObject.Type, repo.GObject.Value
 local Closure = repo.GObject.Closure
 local closure_info = gi.GObject.Closure
 
+local active_closures = {}
+Closure._active_closures = active_closures
+
 -- CallInfo is object based on GICallable, allowing marshalling
 -- from/to GValue arrays.
 local CallInfo = {}
@@ -272,8 +275,9 @@ end
 -- information about how to marshal signals.
 function Closure:_new(target, callback_info)
    local closure = Closure._method.new_simple(closure_info.size, nil)
+   pcall(core.record.set, closure, false)
+   local marshaller
    if target then
-      local marshaller
       if callback_info then
 	 -- Create marshaller based on callinfo.
 	 local call_info = CallInfo.new(callback_info, true)
@@ -290,7 +294,14 @@ function Closure:_new(target, callback_info)
       core.marshal.closure_set_marshal(closure, marshaller)
    end
    Closure.ref(closure)
+   pcall(core.record.set, closure, false)
    Closure.sink(closure)
+   pcall(core.record.set, closure, false)
+   active_closures[#active_closures + 1] = {
+      closure = closure,
+      target = target,
+      marshaller = marshaller,
+   }
    return closure
 end
 

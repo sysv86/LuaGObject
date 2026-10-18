@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible binding bug in this LuaGObject fork.
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this only for reproducible bugs. Reports without reproduction steps
+        and environment details may be closed without action.
+  - type: input
+    id: upstream
+    attributes:
+      label: Reproduces on upstream vtrlx/LuaGObject?
+      placeholder: yes / no / not tested
+    validations:
+      required: true
+  - type: textarea
+    id: stack
+    attributes:
+      label: Crash stack or error output
+      description: Paste the shortest useful excerpt; attach a coredump backtrace if there is one.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What broke, in one or two sentences?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Exact steps, commands, config snippet or a minimal reproducer.
+      placeholder: |
+        1. Run `...`
+        2. Open `...`
+        3. See `...`
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the error message or a screenshot. Do not paste whole logs.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.8.0 or abc1234
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Lua version (5.1-5.5 / LuaJIT), girepository version, GLib version,
+GTK/libadwaita version, distro, build method (Make/Meson)
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Links, suspected cause, workaround, related issues.
+    validations:
+      required: false

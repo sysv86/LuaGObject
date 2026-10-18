@@ -1,130 +1,115 @@
-# LuaGObject
+# LuaGObject (sysv86 fork)
 
-LuaGObject is a library which dynamically generates Lua bindings to libraries which support GObject-Introspection such as Adwaita, GTK, GLib, Gio, Pango, and many more. It also generates bindings to Cairo, necessary for certain Gtk functionality.
+LuaGObject dynamically generates Lua bindings to libraries that support
+GObject-Introspection — GLib, Gio, GTK 4, libadwaita, Pango and many more — plus
+the Cairo bindings needed by parts of GTK.
 
-This library is licensed under an [MIT-style](http://www.opensource.org/licenses/mit-license.php) license. See the LICENSE file for the full text.
+This repository is a fork of [vtrlx/LuaGObject](https://github.com/vtrlx/LuaGObject),
+maintained for [IgnisLua](https://github.com/sysv86/IgnisLua). Upstream remains
+the canonical project; this fork exists because IgnisLua needs two things that
+are not upstream yet.
 
-LuaGObject is tested and compatible with PUC-Rio Lua (versions 5.1, 5.2, 5.3, 5.4, and 5.5) as well as LuaJIT2. Other Lua implementations are not officially supported.
+Licensed under an [MIT-style](http://www.opensource.org/licenses/mit-license.php)
+license — see `LICENSE`.
 
-This project is forked from [LGI](http://github.com/lgi-devs/lgi) and shares many of its internals, quirks, and overall structure.
+Tested with PUC-Rio Lua 5.1–5.5 and LuaJIT2. Other Lua implementations are not
+officially supported. The project descends from [LGI](http://github.com/lgi-devs/lgi)
+and shares much of its internals and structure.
 
-## Installation
+## What this fork changes
 
-The recommended way to install LuaGObject is [through LuaRocks](https://luarocks.org/modules/vtrlx/luagobject).
+1. **Lua 5.5 build support.** The core module is built against Lua 5.5 and is
+   loaded by the IgnisLua launcher from `deps/install/lib/lua/5.5/LuaGObject/`.
+2. **GC ownership hardening.** `object_gc` used to unref every object a proxy
+   pointed at. For objects Lua never held a reference to — borrowed values and
+   objects already finalized by GTK — that dereferenced stale memory and
+   crashed inside `g_type_fundamental()`. The fork keeps a registry of objects
+   Lua actually owns and only unrefs those; anything else is left alone.
+3. **Closure and ParamSpec retention.** Signal closures created for Lua
+   callbacks are anchored so a `GClosure` cannot be freed while the signal is
+   still connected, and `GObject.ParamSpec` is pre-registered so a `pspec`
+   arriving from C always has a valid repo table.
 
-	[sudo] luarocks install luagobject
-
-By default, this will install LuaGObject for Lua 5.1. To install for other versions of Lua, invoke the appropriate LuaRocks command (`luarocks-5.3 install luagobject` to install LuaGObject for Lua 5.3, etc for other Lua versions).
+Everything else is upstream code. Diff against the `vtrlx/LuaGObject` master
+branch to see the fork's changes in full.
 
 ## Building
 
-In order to be able to compile the native part of LuaGObject, GIRepository-2 >= 2.80.0 development package must be installed. The development package is called `libgirepository-2.0-dev` on Debian-based systems (Debian, Ubuntu, Mint, etc) and `glib2-devel` on RedHat-based systems (RHEL, Fedora, etc).
+GIRepository-2 >= 2.80.0 development files are required
+(`libgirepository-2.0-dev` on Debian-based systems, `glib2-devel` on
+RedHat-based systems).
 
-### Using GNU Make
+### GNU Make
 
-Building LuaGObject using GNU Make is straightforward:
+```bash
+make LUA_VERSION=5.5
+sudo make install LUA_VERSION=5.5 PREFIX=/usr
+```
 
-	make
-	[sudo] make install [PREFIX=<prefix>] [DESTDIR=<destdir>]
+On BSD systems use `gmake`. Plain GNU Make does not detect a system Lua through
+pkg-config; install PUC-Rio Lua from source if you build this way.
 
-Please note that on BSD-systems you may need to use the 'gmake' command.
+### Meson
 
-By default, building with GNU Make does not support using pkg-config to detect a system-installed Lua. For installing a development version of LuaGObject with GNU Make, it is recommended to install PUC-Rio Lua [from source](https://www.lua.org/download.html).
+```bash
+meson setup build --prefix=/usr -Dlua-pc=... -Dlua-bin=...
+ninja -C build
+ninja -C build test
+sudo ninja -C build install
+```
 
-### Using Meson
+Visual Studio 2013 and later are supported through Meson as well; see the
+upstream README for the `%INCLUDE%`/`%LIB%`/`%PATH%` details.
 
-Building via Meson is also supported using Meson and Ninja as build tools, also requiring GIRepository-2 >= 2.80.0 as noted above.
+### Inside IgnisLua
 
-	cd $(builddir)
-	meson $(lua_gobject_srcroot) [--prefix=<prefix>] [--buildtype=<buildtype>] [--pkg-config-path=<pkgconfigpath>] [-Dlua-pc=...] [-Dlua-bin=...]
-	ninja
-	ninja test
-	[sudo] ninja install
+IgnisLua keeps a prebuilt copy of this fork under `deps/install/`, which the
+launcher adds to `package.path`/`package.cpath` automatically. To rebuild it
+in place:
 
-Building LuaGObject with Visual Studio 2013 and later is also supported via Meson. It is recommended in this case that CMake is also installed to make finding Lua or LuaJIT easier, since Lua and LuaJIT support Visual Studio builds via batch files or manual compilation of sources. Ensure that `%INCLUDE%` includes the path to the Lua or LuaJIT headers, and `%LIB%` includes the path where the `lua5x.lib` from Lua or LuaJIT can be found, and ensure that `lua5x.dll` and `lua.exe` or `luajit.exe` can be found in `%PATH%` and run correctly. For building with LuaJIT, please do not pass in `-Dlua-pc=luajit`, but do pass in `-Dlua-bin=luajit` in the Meson command line so that the LuaJIT interpreter can be found correctly.
+```bash
+make -C deps/LuaGObject/LuaGObject LUA_VERSION=5.5
+cp deps/LuaGObject/LuaGObject/lua_gobject_core.so \
+   deps/install/lib/lua/5.5/LuaGObject/lua_gobject_core.so
+```
 
 ## Usage
 
-Documentation for LuaGObject is available in the `docs/` folder.
+```lua
+local Gtk = require("LuaGObject").require("Gtk", "4.0")
+local Gio = require("LuaGObject").require("Gio", "2.0")
 
-For developing a modern GNOME app, it is recommended to use Flatpak to ensure stability of the dynamically generated bindings. See [Tally](https://github.com/vtrlx/tally) and [Parchment](https://github.com/vtrlx/parchment) for examples of complete applications developed using LuaGObject.
+local app = Gtk.Application({ application_id = "org.example.App" })
+```
 
-Older LGI-era examples are in the `samples/` directory. Please note that certain examples—especially for GTK—are quite dated and may no longer be accurate.
+Documentation lives in `docs/`. Older LGI-era examples are in `samples/`; some
+of them, especially the GTK ones, are dated.
 
 ### Migrating from LGI
 
-Simply changing any instance of `require('lgi')` to `require('LuaGObject')` in source code should suffice for most applications, assuming LuaGObject is installed.
-
-For more complex apps and especially for CI pipelines, it should be noted that `corelgilua51.{so,dll}` was renamed to `lua_gobject_core.{so,dll}`, and all `lgi/` paths have been renamed to `LuaGObject/`.
+Replace `require('lgi')` with `require('LuaGObject')`. For build systems and CI
+pipelines, note that `corelgilua51.{so,dll}` was renamed to
+`lua_gobject_core.{so,dll}`, and all `lgi/` paths became `LuaGObject/`.
 
 ## Contributing
 
-LuaGObject accepts bug reports and pull requests at [its GitHub repository](https://github.com/vtrlx/LuaGObject). Please only open an issue for behaviour which you yourself have observed; do not spam it with unverified claims. Likewise when submitting a pull request, please only submit code which you yourself have written.
+Bug reports and pull requests for the fork belong in
+[sysv86/LuaGObject](https://github.com/sysv86/LuaGObject); use the templates in
+`.github/`. Do not send fork-only changes upstream — open them against this
+repository instead.
 
-Contributions to LuaGObject will not be accepted if they are found to contain any changes, in whole or in part, by any product branded as "AI", any LLM, any software "agent", or any other machine learning model. Machine leaning models include, but are not limited to: ChatGPT, Copilot, Claude, Ollama, and any other generative application. If a contribution is found to have been generated in whole or in part by a machine learning model, no further contributions from the same contributor will be accepted. Contributions are accepted at the sole discretion of LuaGObject's maintainer. There is no process to appeal the decision to reject a contribution, nor is there a process to appeal the decision to reject a contributor.
-
-If you are experiencing any difficulty with understanding LuaGObject's code without the use of the aforementioned machine learning models, it is recommended to instead get in contact with the maintainer by sending an email to `victoria AT vtrlx DOT ca` with a subject line indicating you'd like assistance understanding LuaGObject's internals.
+Upstream `vtrlx/LuaGObject` has its own contribution policy, including a ban on
+machine-generated contributions. Anything intended for upstream must satisfy
+that policy; changes in this fork are not affected by it.
 
 ## Credits
 
-LuaGObject would not be possible without the work of Christian Hergert, who did the initial work on porting LGI to GIRepository 2.80.
+LuaGObject exists because of Christian Hergert's initial port of LGI to
+GIRepository 2.80, and because of the LGI developers: Pavel Holejsovsky, Uli
+Schlachter, Jasper Lievisse Adriaanse, Ildar Mulyukov, Nils Nordman, Ignas
+Anikevicius, Craig Barnes, Nicola Fontana, Andreas Stührk, Aaron Faanes,
+Jiří Klimeš, Garrett Regier, Kenneth Zhou, Travis Hoppe, Tobias Jakobs,
+Heiko Becker, Vincent Bermel and Szunti.
 
-LuaGObject is also built on the work of LGI's developers, listed below in no particular order.
-
-- Pavel Holejsovsky
-- Uli Schlachter
-- Jasper Lievisse Adriaanse
-- Ildar Mulyukov
-- Nils Nordman
-- Ignas Anikevicius
-- Craig Barnes
-- Nicola Fontana
-- Andreas Stührk
-- Aaron Faanes
-- Jiří Klimeš
-- Garrett Regier
-- Kenneth Zhou
-- Travis Hoppe
-- Tobias Jakobs
-- Heiko Becker
-- Vincent Bermel
-- Szunti
-
-## History
-
-### 0.10.5 (2026-02-04)
-
-- Fixes an issue preventing LuaGObject from working with GLib version 2.87 and later
-
-### 0.10.4 (2026-01-20)
-
-- Adds a new method :connect_signal to all GObject instances which uses GObject's internal mechanisms to connect to a signal, including those which LuaGObject fails to detect through introspection
-- Fixes Adw.ToolbarView's .bottom_bars pseudo-property
-
-### 0.10.3 (2025-12-29)
-
-- When used in contexts where an unsigned integer is expected, negative numbers now underflow into the expected numeric range instead of generating an error (see issue #14)
-
-### 0.10.2 (2025-09-22)
-
-- Adds the `extra_css_classes` attribute to `Gtk.Widget` and all subclasses, allowing extra CSS classes to be added at construct-time without overwriting CSS classes added by a class' implementation
-- Fixes an issue preventing LuaGObject from working with GLib version 2.86 and later
-
-### 0.10.1 (2025-09-04)
-
-- Can now add children directly to many GTK 4 and Adwaita widgets when constructing them
-
-### 0.10.0 (2025-07-28)
-
-- First version under the name "LuaGObject"
-- Supports PUC-Rio Lua 5.4
-- Supports PUC-Rio Lua 5.5
-- Compatible with GTK 4 and libadwaita (a.k.a. "Adw")
-- The `Gio.Async` override now supports additional styles of async methods, where functions are named `<name>` and `<name>_finish` without any `_async` labels
-- Enum and flag parameters in functions are now optional, defaulting to a 0 value when omitted
-- Core GI code is based on GIRepository-2.0, allowing use of LuaGObject with GNOME 49 and later
-- Can now be built with Meson
-
-### Older Pre-Fork Versions
-
-LuaGObject was forked from LGI after it stopped receiving new releases. To see the version history of its older versions, see the "History" subheading in LGI's [README](http://github.com/lgi-devs/lgi#history).
+Release history up to 0.10.5 is documented in the upstream README; older
+pre-fork versions are listed in LGI's history.
